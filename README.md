@@ -11,7 +11,9 @@ my own.
 
 Usage
 -----
-The main script is gcexport.py. Here is the useage: 
+The main script is gcexport.py. Additionally, there is an option to hardcode a range of allowed lat/long values in heatmap.py (in the call for getCoordinates). This may help get better heatmap results if you have activities spread across a wide area. 
+
+Here is the useage: 
 
 ```
 usage: gcexport.py [-h] [-v] [--version] [--username [USERNAME]]
