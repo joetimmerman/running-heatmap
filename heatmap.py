@@ -20,7 +20,7 @@ def createHeatmap(activitiesDir):
 
 	searchText = '~@~\n'
 
-	coords = parse_coords.getCoordinates(activitiesDir, lowLon = -77)
+	coords = parse_coords.getCoordinates(activitiesDir)
 	"""
 	with open (outFP, 'w') as f:
 		f.write('<!DOCTYPE html>\n')
