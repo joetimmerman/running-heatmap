@@ -51,7 +51,5 @@ Examples:
 
 History
 -------
-The core of the gcexport.py was written by @kjkjava, and can be found here: https://github.com/kjkjava/garmin-connect-export. This version of the script was no longer working due to 
-changes on Garmin's side -- @moderation fixed these issues in a fork here: https://github.com/moderation/garmin-connect-export. This version also didn't work for me, so I made additional
-changes to get it working. I have since ported the code to Python3, implemented additional options, and added the Google heatmap functionality (heatmap.py and parse_coords.py).
+The core of the gcexport.py was written by @kjkjava, and can be found [here](https://github.com/kjkjava/garmin-connect-export). This version of the script was no longer working due to changes on Garmin's side -- @moderation fixed these issues in a fork [here](https://github.com/moderation/garmin-connect-export). I adapted another [fork](https://github.com/joetimmerman/garmin-connect-export) with additional imrpovements -- that is the version of gcexport.py in this script. 
 
