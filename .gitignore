@@ -1,5 +1,5 @@
 
 __pycache__/
 extras/
-.*garmin_connect_export/
-map.html
+**/*garmin_connect_export/
+*map.html

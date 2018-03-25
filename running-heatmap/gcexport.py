@@ -13,37 +13,29 @@ Date: March 27, 2017
 Description:	Use this script to export your fitness data from Garmin Connect.
 				See README.md for more information.
 """
-# from __future__ import division
-# from __future__ import print_function
 
-# from future import standard_library
-# standard_library.install_aliases()
-# from builtins import input
-# from builtins import str
-# from past.utils import old_div
 from urllib.parse import urlencode
 from datetime import datetime
 from getpass import getpass
 from sys import argv
 from os.path import isdir
 from os.path import isfile
-from os.path import dirname
-from os.path import realpath
 from os import mkdir
 from os import remove
 from xml.dom.minidom import parseString
 from subprocess import call
 
+
 import urllib.request, urllib.parse, urllib.error, urllib.request, urllib.error, urllib.parse, http.cookiejar, json, os, sys, heatmap
 from fileinput import filename
 
+import logging
 import argparse
 import zipfile
 
 script_version = '1.0.0'
 current_date = datetime.now().strftime('%Y-%m-%d')
-#activities_directory = './' + current_date + '_garmin_connect_export'
-activities_directory = os.path.join(sys.path[0], current_date + '_garmin_connect_export')
+activities_directory = './' + current_date + '_garmin_connect_export'
 
 parser = argparse.ArgumentParser()
 
@@ -71,7 +63,10 @@ parser.add_argument('-s', '--skipvalidation',
 parser.add_argument('-m', '--map', 
 	help='create heatmap of activities (experimental)',
 	action='store_true')
-	
+
+# Debug mode not needed enough to make it part of the CLI, but want to leave the option here since
+# it may be helpful when Garmin inevitably changes their web interface
+DEBUG = False
 
 args = parser.parse_args()
 
@@ -79,9 +74,18 @@ if args.version:
 	print(argv[0] + ", version " + script_version)
 	exit(0)
 
+log = logging.getLogger(name='gcexport')
+logging.basicConfig() #set up a default handler so that levels < WARNING work properly
+log.setLevel(logging.DEBUG if DEBUG else logging.INFO if args.verbose else logging.WARNING)
+
+
+print(logging.INFO)
+print(log.getEffectiveLevel())
+log.info('logging at level INFO')
+
 cookie_jar = http.cookiejar.CookieJar()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
-# print cookie_jar
+log.debug(cookie_jar)
 
 # url is a string, post is a dictionary of POST parameters, headers is a dictionary of headers.
 def http_req(url, post=None, headers={}):
@@ -92,11 +96,11 @@ def http_req(url, post=None, headers={}):
 		request.add_header(header_key, header_value)
 	if post:
 		# print "POSTING"
-		post = urlencode(post).encode('utf-8')  # Convert dictionary to POST parameter string.
-	# print request.headers
-	# print cookie_jar
-	# print post
-	# print request
+		post = str.encode(urlencode(post))  # Convert dictionary to POST parameter string.
+	log.debug(request.headers)
+	log.debug(cookie_jar)
+	log.debug(post)
+	log.debug(request)
 	response = opener.open(request, data=post)  # This line may throw a urllib2.HTTPError.
 
 	# N.B. urllib2 will follow any 302 redirects. Also, the "open" call above may throw a urllib2.HTTPError which is checked for below.
@@ -105,21 +109,13 @@ def http_req(url, post=None, headers={}):
 	if (response.getcode() != 200):
 		raise Exception('Bad return code (' + str(response.getcode()) + ') for: ' + url)
 	
-	return response.read()
-
-if args.verbose:
-	def verboseprint(*args):
-		for arg in args:
-			print(arg, end=' ')
-		print()
-else:
-	verboseprint = lambda *a: None
+	return str(response.read(), 'utf-8')
 
 print('Welcome to Garmin Connect Exporter!')
 
 # Create directory for data files.
 if isdir(args.directory):
-	print('Warning: Output directory already exists. Will skip already-downloaded files and append to the CSV file.')
+	log.warning('Output directory already exists. Will skip already-downloaded files and append to the CSV file.')
 
 username = args.username if args.username else input('Username: ')
 password = args.password if args.password else getpass()
@@ -128,8 +124,8 @@ password = args.password if args.password else getpass()
 limit_maximum = 100
 
 hostname_url = http_req('http://connect.garmin.com/gauth/hostname')
-# print hostname_url
-hostname = json.loads(hostname_url.decode('utf-8'))['host']
+log.debug(hostname_url)
+hostname = json.loads(hostname_url)['host']
 
 REDIRECT = "https://connect.garmin.com/post-auth/login"
 BASE_URL = "http://connect.garmin.com/en-US/signin"
@@ -158,7 +154,7 @@ data = {'service': REDIRECT,
     'embedWidget': 'false',
     'generateExtraServiceTicket': 'false'}
 
-verboseprint(urllib.parse.urlencode(data))
+log.debug(urllib.parse.urlencode(data))
 
 # URLs for various services.
 url_gc_login     = 'https://sso.garmin.com/sso/login?' + urllib.parse.urlencode(data)
@@ -174,47 +170,47 @@ url_gc_original_activity = 'http://connect.garmin.com/proxy/download-service/fil
 
 # Initially, we need to get a valid session cookie, so we pull the login page.
 print('Connecting to Garmin')
-verboseprint('Request login page')
+log.info('Request login page')
 http_req(url_gc_login)
-verboseprint('Finish login page')
+log.info('Finish login page')
 
 # Now we'll actually login.
 post_data = {'username': username, 'password': password, 'embed': 'true', 'lt': 'e1s1', '_eventId': 'submit', 'displayNameRequired': 'false'}  # Fields that are passed in a typical Garmin login.
-verboseprint('Post login data')
+log.info('Post login data')
 http_req(url_gc_login, post_data)
-verboseprint('Finish login post')
+log.info('Finish login post')
 
 # Get the key.
 # TODO: Can we do this without iterating? 
 login_ticket = None
-verboseprint("-------COOKIE")
+log.info("-------COOKIE")
 for cookie in cookie_jar:
-	verboseprint(cookie.name + ": " + cookie.value)
+	log.info(cookie.name + ": " + cookie.value)
 	if cookie.name == 'CASTGC':
 		login_ticket = cookie.value
-		verboseprint(login_ticket, cookie.value)
+		log.info(login_ticket)
 		break
-verboseprint("-------COOKIE")
+log.info("-------COOKIE")
 
 if not login_ticket:
 	raise Exception('Did not get a ticket cookie. Cannot log in. Did you enter the correct username and password?')
 
-# Chop of 'TGT-' off the beginning, prepend 'ST-0'.
+# Chop 'TGT-' off the beginning, prepend 'ST-0'.
 login_ticket = 'ST-0' + login_ticket[4:]
-# print login_ticket
+log.debug(login_ticket)
 
-verboseprint('Request authentication')
-# print url_gc_post_auth + 'ticket=' + login_ticket
+log.info('Request authentication')
+log.debug(url_gc_post_auth + 'ticket=' + login_ticket)
 http_req(url_gc_post_auth + 'ticket=' + login_ticket)
-verboseprint('Finished authentication')
+log.info('Finish authentication')
 
 # https://github.com/kjkjava/garmin-connect-export/issues/18#issuecomment-243859319
-verboseprint("Call modern")
+log.info("Call modern")
 http_req("http://connect.garmin.com/modern")
-verboseprint("Finish modern")
-verboseprint("Call legacy session")
+log.info("Finish modern")
+log.info("Call legacy session")
 http_req("https://connect.garmin.com/legacy/session")
-verboseprint("Finish legacy session")
+log.info("Finish legacy session")
 print('Connection complete')
 
 # We should be logged in now.
@@ -228,7 +224,7 @@ csv_file = open(csv_filename, 'a')
 
 # Write header to CSV file
 if not csv_existed:
-	csv_file.write(u'Activity name,\
+	csv_file.write('Activity name,\
 Description,\
 Begin timestamp,\
 Duration (h:m:s),\
@@ -289,7 +285,7 @@ Sample count\n')
 # Min. elevation (m),\
 # Max. elevation (m),\
 # Activity parent,\
-print('Downloading activites (this may take some time)')
+
 download_all = False
 if args.count == 'all':
 	# If the user wants to download all activities, first download one,
@@ -304,25 +300,26 @@ total_downloaded = 0
 # This while loop will download data from the server in multiple chunks, if necessary.
 while total_downloaded < total_to_download:
 	# Maximum of 100... 400 return status if over 100.  So download 100 or whatever remains if less than 100.
-	if total_to_download - total_downloaded > limit_maximum:
-		num_to_download = limit_maximum
+	if total_to_download - total_downloaded > 100:
+		num_to_download = 100
 	else:
 		num_to_download = total_to_download - total_downloaded
 
 	search_params = {'start': total_downloaded, 'limit': num_to_download}
 	# Query Garmin Connect
-	verboseprint("Making activity request ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-	verboseprint(url_gc_search + urlencode(search_params))
+	print('Pulling activities')
+	log.info("Making activity request ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+	log.info(url_gc_search + urlencode(search_params))
 	result = http_req(url_gc_search + urlencode(search_params))
-	verboseprint("Finished activity request ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+	log.info("Finished activity request ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
 	# Persist JSON
 	json_filename = args.directory + '/activities.json'
 	json_file = open(json_filename, 'a')
-	json_file.write(result.decode('utf-8'))
+	json_file.write(result)
 	json_file.close()
 
-	json_results = json.loads(result.decode('utf-8'))  # TODO: Catch possible exceptions here.
+	json_results = json.loads(result)  # TODO: Catch possible exceptions here.
 
 	# search = json_results['results']['search']
 
@@ -339,23 +336,23 @@ while total_downloaded < total_to_download:
 	# Process each activity.
 	for a in activities:
 		# Display which entry we're working on.
-		verboseprint('Garmin Connect activity: [' + str(a['activity']['activityId']) + ']')
-		verboseprint(a['activity']['activityName'])
-		verboseprint('\t' + a['activity']['activitySummary']['BeginTimestamp']['display'] + ',')
+		print('Garmin Connect activity: [' + str(a['activity']['activityId']) + ']', end=' ')
+		print(a['activity']['activityName'])
+		print('\t' + a['activity']['activitySummary']['BeginTimestamp']['display'] + ',', end=' ')
 		if 'SumElapsedDuration' in a['activity']['activitySummary']:
-			verboseprint(a['activity']['activitySummary']['SumElapsedDuration']['display'] + ',')
+			print(a['activity']['activitySummary']['SumElapsedDuration']['display'] + ',', end=' ')
 		else:
-			verboseprint('??:??:??,', end=' ')
+			print('??:??:??,', end=' ')
 		if 'SumDistance' in a['activity']['activitySummary']:
-			verboseprint(a['activity']['activitySummary']['SumDistance']['withUnit'])
+			print(a['activity']['activitySummary']['SumDistance']['withUnit'])
 		else:
-			verboseprint('0.00 Miles')
+			print('0.00 Miles')
 
 		if args.format == 'gpx':
 			data_filename = args.directory + '/activity_' + str(a['activity']['activityId']) + '.gpx'
 			download_url = url_gc_gpx_activity + str(a['activity']['activityId']) + '?full=true'
 			# download_url = url_gc_gpx_activity + str(a['activity']['activityId']) + '?full=true' + '&original=true'
-			verboseprint(download_url)
+			log.info(download_url)
 			file_mode = 'w'
 			empty_gpx_flag = False
 		elif args.format == 'tcx':
@@ -371,17 +368,17 @@ while total_downloaded < total_to_download:
 			raise Exception('Unrecognized format.')
 
 		if isfile(data_filename):
-			verboseprint('\tData file already exists; skipping...')
+			print('\tData file already exists; skipping...')
 			continue
 		if args.format == 'original' and isfile(fit_filename):  # Regardless of unzip setting, don't redownload if the ZIP or FIT file exists.
-			verboseprint('\tFIT data file already exists; skipping...')
+			print('\tFIT data file already exists; skipping...')
 			continue
 
 		# Download the data file from Garmin Connect.
 		# If the download fails (e.g., due to timeout), this script will die, but nothing
 		# will have been written to disk about this activity, so just running it again
 		# should pick up where it left off.
-		verboseprint('\tDownloading file...')
+		print('\tDownloading file...', end=' ')
 
 		try:
 			data = http_req(download_url)
@@ -395,13 +392,13 @@ while total_downloaded < total_to_download:
 				# Writing an empty file prevents this file from being redownloaded, similar to the way GPX files are saved even when there are no tracks.
 				# One could be generated here, but that's a bit much. Use the GPX format if you want actual data in every file,
 				# as I believe Garmin provides a GPX file for every activity.
-				verboseprint('Writing empty file since Garmin did not generate a TCX file for this activity...')
-				data = ''.endocde()
+				print('Writing empty file since Garmin did not generate a TCX file for this activity...', end=' ')
+				data = ''
 			elif e.code == 404 and args.format == 'original':
 				# For manual activities (i.e., entered in online without a file upload), there is no original file.
 				# Write an empty file to prevent redownloading it.
-				verboseprint('Writing empty file since there was no original activity data...')
-				data = ''.endcode()
+				print('Writing empty file since there was no original activity data...', end=' ')
+				data = ''
 			else:
 				raise Exception('Failed. Got an unexpected HTTP error (' + str(e.code) + ').')
 		except Exception as e:
@@ -409,14 +406,12 @@ while total_downloaded < total_to_download:
 				# For activities without GPS data, Garmin no longer kicks out a default .gpx file. 
 				# Added code to handle this exception. Also ignores .gpx validation for these activites
 				# since file is empty.
-				verboseprint('No gpx data available, writing empty file...')
-				data = ''.encode()
+				print('No gpx data available, writing empty file... (generic exception)')
+				data = ''
 				empty_gpx_flag = True
 
 		save_file = open(data_filename, file_mode)
-		
-		save_file.write(data.decode('utf-8'))
-		
+		save_file.write(data)
 		save_file.close()
 
 		# Write stats to CSV.
@@ -495,41 +490,35 @@ while total_downloaded < total_to_download:
 			gpx = parseString(data)
 			gpx_data_exists = len(gpx.getElementsByTagName('trkpt')) > 0
 
-			# TODO: Garmin is frequently not returning a begin/end lat/long in the JSON. 
-			#		Add code here to grab this data from .gpx files if possible
-
-
 			if gpx_data_exists:
 				print('Done. GPX data saved.')
 			else:
 				print('Done. No track points found.')
 		elif args.format == 'original':
 			if args.unzip and data_filename[-3:].lower() == 'zip':  # Even manual upload of a GPX file is zipped, but we'll validate the extension.
-				try:
-					print("Unzipping and removing original files...", end=' ')
-					zip_file = open(data_filename, 'rb')
-					z = zipfile.ZipFile(zip_file)
-					for name in z.namelist():
-						z.extract(name, args.directory)
-					zip_file.close()
-					remove(data_filename)
-				except:
-					verboseprint("Problem extracting zip file, skipping.")
+				print("Unzipping and removing original files...", end=' ')
+				zip_file = open(data_filename, 'rb')
+				z = zipfile.ZipFile(zip_file)
+				for name in z.namelist():
+					z.extract(name, args.directory)
+				zip_file.close()
+				remove(data_filename)
 			print('Done.')
 		else:
 			# TODO: Consider validating other formats.
-			verboseprint('Done.')
+			print('Done.')
 	total_downloaded += num_to_download
 # End while loop for multiple chunks.
 
 csv_file.close()
 
-#print('Open CSV output.')
-print('Activity log downloaded to: ' + dirname(realpath(csv_filename)))
+print('Open CSV output.')
+print(csv_filename)
 # call(["open", csv_filename])
 
 if args.map:
 	heatmap.createHeatmap(args.directory)
 	outputHeatmapDirectory = heatmap.outFP
 	print('Heatmap written to: ' + outputHeatmapDirectory)
+
 
